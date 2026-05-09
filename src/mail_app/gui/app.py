@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import threading
 import tkinter as tk
 from pathlib import Path
@@ -121,21 +122,34 @@ class MailApp(tk.Tk):
         ttk.Button(frame, text="保存账号", command=self.save_account, style="Accent.TButton").grid(row=7, column=1, sticky="ew", pady=(12, 0), padx=(0, 4))
 
     def _build_actions_panel(self, parent: ttk.Frame) -> None:
-        frame = ttk.LabelFrame(parent, text="快捷操作", padding=16)
+        frame = ttk.LabelFrame(parent, text="快捷操作", padding=12)
         frame.grid(row=1, column=0, sticky="ew", pady=(16, 0))
-        frame.columnconfigure(0, weight=1, minsize=300)
-        self.fetch_button = ttk.Button(frame, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton")
+        frame.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(frame, height=190, highlightthickness=0, bd=0, bg="#eef3f8")
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        content = ttk.Frame(canvas)
+        window_id = canvas.create_window((0, 0), window=content, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        content.bind("<Configure>", lambda event: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+
+        content.columnconfigure(0, weight=1, minsize=292)
+        self.fetch_button = ttk.Button(content, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton")
         self.fetch_button.grid(row=0, column=0, sticky="ew", pady=5)
-        self.compose_button = ttk.Button(frame, text="写邮件", command=self.open_compose_window)
+        self.compose_button = ttk.Button(content, text="写邮件", command=self.open_compose_window)
         self.compose_button.grid(row=1, column=0, sticky="ew", pady=5)
-        self.delete_button = ttk.Button(frame, text="删除选中邮件", command=self.delete_selected_message)
+        self.delete_button = ttk.Button(content, text="删除选中邮件", command=self.delete_selected_message)
         self.delete_button.grid(row=2, column=0, sticky="ew", pady=5)
-        self.reparse_button = ttk.Button(frame, text="刷新本地解析", command=self.reparse_cached_messages)
+        self.reparse_button = ttk.Button(content, text="刷新本地解析", command=self.reparse_cached_messages)
         self.reparse_button.grid(row=3, column=0, sticky="ew", pady=5)
-        self.clear_cache_button = ttk.Button(frame, text="清空本地缓存", command=self.clear_local_cache)
+        self.clear_cache_button = ttk.Button(content, text="清空本地缓存", command=self.clear_local_cache)
         self.clear_cache_button.grid(row=4, column=0, sticky="ew", pady=5)
         self.status_var = tk.StringVar(value="请先保存账号配置。")
-        ttk.Label(frame, textvariable=self.status_var, wraplength=300).grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(content, textvariable=self.status_var, wraplength=292).grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(content, text="向下滚动查看更多操作状态", foreground="#64748b").grid(row=6, column=0, sticky="ew", pady=(8, 0))
 
     def _build_inbox_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="收件箱", padding=12)
@@ -196,6 +210,11 @@ class MailApp(tk.Tk):
         self.body_text.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
         body_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.body_text.yview)
         body_scrollbar.grid(row=4, column=2, sticky="ns", pady=(10, 0))
+        self.body_text.tag_configure("md_h1", font=("Microsoft YaHei UI", 15, "bold"), foreground="#1e3a8a", spacing1=8, spacing3=6)
+        self.body_text.tag_configure("md_h2", font=("Microsoft YaHei UI", 13, "bold"), foreground="#1d4ed8", spacing1=7, spacing3=5)
+        self.body_text.tag_configure("md_h3", font=("Microsoft YaHei UI", 11, "bold"), foreground="#2563eb", spacing1=6, spacing3=4)
+        self.body_text.tag_configure("md_quote", foreground="#64748b", lmargin1=16, lmargin2=16)
+        self.body_text.tag_configure("md_code", font=("Consolas", 10), background="#f1f5f9", foreground="#0f172a")
         self.body_text.configure(state="disabled", yscrollcommand=body_scrollbar.set)
 
     def _build_log_panel(self, parent: ttk.Frame) -> None:
@@ -333,19 +352,49 @@ class MailApp(tk.Tk):
         self.detail_from.set(message.sender)
         self.detail_to.set(message.recipient)
         self.detail_date.set(message.sent_at)
+        self._set_body_text(message.body or message.raw_content)
+
+    def _set_body_text(self, text: str) -> None:
         self.body_text.configure(state="normal")
         self.body_text.delete("1.0", "end")
-        self.body_text.insert("1.0", message.body or message.raw_content)
+        self.body_text.insert("1.0", text)
+        self._apply_markdown_tags(text)
         self.body_text.configure(state="disabled")
+
+    def _apply_markdown_tags(self, text: str) -> None:
+        line_start = "1.0"
+        in_code_block = False
+        code_block_start = ""
+        for line in text.splitlines():
+            line_end = f"{line_start} lineend"
+            if line.strip().startswith("```"):
+                if not in_code_block:
+                    in_code_block = True
+                    code_block_start = line_start
+                else:
+                    self.body_text.tag_add("md_code", code_block_start, line_end)
+                    in_code_block = False
+            elif in_code_block:
+                pass
+            else:
+                heading = re.match(r"^(#{1,3})\s+(.+)", line)
+                if heading:
+                    tag = {1: "md_h1", 2: "md_h2", 3: "md_h3"}[len(heading.group(1))]
+                    self.body_text.tag_add(tag, line_start, line_end)
+                elif line.startswith(">"):
+                    self.body_text.tag_add("md_quote", line_start, line_end)
+                elif line.startswith("    ") or line.startswith("`"):
+                    self.body_text.tag_add("md_code", line_start, line_end)
+            line_start = self.body_text.index(f"{line_start} + 1 line")
+        if in_code_block:
+            self.body_text.tag_add("md_code", code_block_start, "end")
 
     def _clear_detail(self) -> None:
         self.detail_subject.set("")
         self.detail_from.set("")
         self.detail_to.set("")
         self.detail_date.set("")
-        self.body_text.configure(state="normal")
-        self.body_text.delete("1.0", "end")
-        self.body_text.configure(state="disabled")
+        self._set_body_text("")
 
     def delete_selected_message(self) -> None:
         account = self._ensure_account()
