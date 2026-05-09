@@ -19,35 +19,6 @@ from ..protocol.pop3_client import POP3Client
 from ..protocol.smtp_client import SMTPClient
 
 
-class RoundedCard(tk.Canvas):
-    def __init__(self, parent, title: str, padding: int = 18, radius: int = 18, **kwargs) -> None:
-        super().__init__(parent, highlightthickness=0, bd=0, bg="#eef3f8", **kwargs)
-        self.radius = radius
-        self.title = title
-        self.inner = ttk.Frame(self, style="Card.TFrame", padding=padding)
-        self.window_id = self.create_window(padding, padding + 28, anchor="nw", window=self.inner)
-        self.bind("<Configure>", self._draw)
-
-    def _draw(self, event=None) -> None:
-        width = self.winfo_width()
-        height = self.winfo_height()
-        if width < 10 or height < 10:
-            return
-        self.delete("card")
-        self._rounded_rect(3, 4, width - 3, height - 3, self.radius, fill="#ffffff", outline="#d8e1ec", tags="card")
-        self.create_text(18, 17, anchor="w", text=self.title, fill="#1f2937", font=("Microsoft YaHei UI", 10, "bold"), tags="card")
-        self.coords(self.window_id, 18, 44)
-        self.itemconfigure(self.window_id, width=max(1, width - 36), height=max(1, height - 60))
-        self.tag_lower("card")
-
-    def _rounded_rect(self, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs) -> None:
-        points = [
-            x1 + radius, y1, x2 - radius, y1, x2, y1, x2, y1 + radius,
-            x2, y2 - radius, x2, y2, x2 - radius, y2, x1 + radius, y2,
-            x1, y2, x1, y2 - radius, x1, y1 + radius, x1, y1,
-        ]
-        self.create_polygon(points, smooth=True, **kwargs)
-
 
 class MailApp(tk.Tk):
     def __init__(self, store: MailStore) -> None:
@@ -94,9 +65,9 @@ class MailApp(tk.Tk):
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(16, 0))
         header.bind("<Configure>", self._draw_header)
 
-        left = ttk.Frame(self, padding=18, width=390)
+        left = ttk.Frame(self, padding=18)
         left.grid(row=1, column=0, sticky="ns")
-        left.grid_propagate(False)
+        left.columnconfigure(0, minsize=340)
         right = ttk.Frame(self, padding=(0, 18, 18, 18))
         right.grid(row=1, column=1, sticky="nsew")
         right.rowconfigure(0, weight=1)
@@ -120,9 +91,8 @@ class MailApp(tk.Tk):
         canvas.create_text(width - 28, 44, anchor="e", text="Socket · SMTP · POP3 · SQLite", fill="#1d4ed8", font=("Consolas", 10, "bold"))
 
     def _build_account_panel(self, parent: ttk.Frame) -> None:
-        card = RoundedCard(parent, "账号配置", height=355)
-        card.grid(row=0, column=0, sticky="ew")
-        frame = card.inner
+        frame = ttk.LabelFrame(parent, text="账号配置", padding=16)
+        frame.grid(row=0, column=0, sticky="ew")
         frame.columnconfigure(0, minsize=82)
         frame.columnconfigure(1, weight=1)
 
@@ -151,9 +121,8 @@ class MailApp(tk.Tk):
         ttk.Button(frame, text="保存账号", command=self.save_account, style="Accent.TButton").grid(row=7, column=1, sticky="ew", pady=(12, 0), padx=(0, 4))
 
     def _build_actions_panel(self, parent: ttk.Frame) -> None:
-        card = RoundedCard(parent, "快捷操作", height=305)
-        card.grid(row=1, column=0, sticky="ew", pady=(16, 0))
-        frame = card.inner
+        frame = ttk.LabelFrame(parent, text="快捷操作", padding=16)
+        frame.grid(row=1, column=0, sticky="ew", pady=(16, 0))
         frame.columnconfigure(0, weight=1, minsize=300)
         self.fetch_button = ttk.Button(frame, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton")
         self.fetch_button.grid(row=0, column=0, sticky="ew", pady=5)
@@ -169,9 +138,8 @@ class MailApp(tk.Tk):
         ttk.Label(frame, textvariable=self.status_var, wraplength=300).grid(row=5, column=0, sticky="ew", pady=(12, 0))
 
     def _build_inbox_panel(self, parent: ttk.Frame) -> None:
-        card = RoundedCard(parent, "收件箱", height=330)
-        card.grid(row=0, column=0, sticky="nsew")
-        frame = card.inner
+        frame = ttk.LabelFrame(parent, text="收件箱", padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
@@ -194,16 +162,21 @@ class MailApp(tk.Tk):
         notebook = ttk.Notebook(parent)
         notebook.grid(row=1, column=0, sticky="nsew", pady=(14, 0))
         detail_tab = ttk.Frame(notebook, padding=0)
+        detail_tab.rowconfigure(0, weight=1)
+        detail_tab.columnconfigure(0, weight=1)
         log_tab = ttk.Frame(notebook, padding=0)
+        log_tab.rowconfigure(0, weight=1)
+        log_tab.columnconfigure(0, weight=1)
         notebook.add(detail_tab, text="邮件详情")
         notebook.add(log_tab, text="协议日志")
         self._build_detail_panel(detail_tab)
         self._build_log_panel(log_tab)
 
     def _build_detail_panel(self, parent: ttk.Frame) -> None:
-        card = RoundedCard(parent, "邮件详情")
-        card.pack(fill="both", expand=True)
-        frame = card.inner
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+        frame = ttk.LabelFrame(parent, text="邮件详情", padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
         frame.rowconfigure(4, weight=1)
         frame.columnconfigure(1, weight=1)
 
@@ -219,14 +192,17 @@ class MailApp(tk.Tk):
             entry.grid(row=row, column=1, sticky="ew", pady=3)
             self.detail_entries.append(entry)
 
-        self.body_text = tk.Text(frame, height=12, wrap="word", font=("Microsoft YaHei UI", 10), relief="flat", padx=12, pady=12, bg="#ffffff", fg="#1f2937", insertbackground="#2563eb")
+        self.body_text = tk.Text(frame, height=10, wrap="word", font=("Microsoft YaHei UI", 10), relief="flat", padx=12, pady=12, bg="#ffffff", fg="#1f2937", insertbackground="#2563eb")
         self.body_text.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(10, 0))
-        self.body_text.configure(state="disabled")
+        body_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.body_text.yview)
+        body_scrollbar.grid(row=4, column=2, sticky="ns", pady=(10, 0))
+        self.body_text.configure(state="disabled", yscrollcommand=body_scrollbar.set)
 
     def _build_log_panel(self, parent: ttk.Frame) -> None:
-        card = RoundedCard(parent, "SMTP / POP3 协议日志")
-        card.pack(fill="both", expand=True)
-        frame = card.inner
+        parent.rowconfigure(0, weight=1)
+        parent.columnconfigure(0, weight=1)
+        frame = ttk.LabelFrame(parent, text="SMTP / POP3 协议日志", padding=12)
+        frame.grid(row=0, column=0, sticky="nsew")
         frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=0)
         frame.columnconfigure(1, weight=1)
