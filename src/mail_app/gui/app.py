@@ -20,12 +20,12 @@ from ..protocol.smtp_client import SMTPClient
 
 
 class RoundedCard(tk.Canvas):
-    def __init__(self, parent, title: str, padding: int = 14, radius: int = 18, **kwargs) -> None:
+    def __init__(self, parent, title: str, padding: int = 18, radius: int = 18, **kwargs) -> None:
         super().__init__(parent, highlightthickness=0, bd=0, bg="#eef3f8", **kwargs)
         self.radius = radius
         self.title = title
         self.inner = ttk.Frame(self, style="Card.TFrame", padding=padding)
-        self.window_id = self.create_window(padding, padding + 26, anchor="nw", window=self.inner)
+        self.window_id = self.create_window(padding, padding + 28, anchor="nw", window=self.inner)
         self.bind("<Configure>", self._draw)
 
     def _draw(self, event=None) -> None:
@@ -36,8 +36,8 @@ class RoundedCard(tk.Canvas):
         self.delete("card")
         self._rounded_rect(3, 4, width - 3, height - 3, self.radius, fill="#ffffff", outline="#d8e1ec", tags="card")
         self.create_text(18, 17, anchor="w", text=self.title, fill="#1f2937", font=("Microsoft YaHei UI", 10, "bold"), tags="card")
-        self.coords(self.window_id, 14, 40)
-        self.itemconfigure(self.window_id, width=max(1, width - 28), height=max(1, height - 52))
+        self.coords(self.window_id, 18, 44)
+        self.itemconfigure(self.window_id, width=max(1, width - 36), height=max(1, height - 60))
         self.tag_lower("card")
 
     def _rounded_rect(self, x1: int, y1: int, x2: int, y2: int, radius: int, **kwargs) -> None:
@@ -94,7 +94,7 @@ class MailApp(tk.Tk):
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=18, pady=(16, 0))
         header.bind("<Configure>", self._draw_header)
 
-        left = ttk.Frame(self, padding=18, width=350)
+        left = ttk.Frame(self, padding=18, width=390)
         left.grid(row=1, column=0, sticky="ns")
         left.grid_propagate(False)
         right = ttk.Frame(self, padding=(0, 18, 18, 18))
@@ -123,6 +123,7 @@ class MailApp(tk.Tk):
         card = RoundedCard(parent, "账号配置", height=355)
         card.grid(row=0, column=0, sticky="ew")
         frame = card.inner
+        frame.columnconfigure(0, minsize=82)
         frame.columnconfigure(1, weight=1)
 
         self.email_var = tk.StringVar()
@@ -142,18 +143,18 @@ class MailApp(tk.Tk):
             ("POP3 端口", self.pop3_port_var, False),
         ]
         for row, (label, var, secret) in enumerate(fields):
-            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=4)
-            entry = ttk.Entry(frame, textvariable=var, width=34, show="*" if secret else "")
-            entry.grid(row=row, column=1, sticky="ew", pady=5)
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky="w", pady=4, padx=(0, 8))
+            entry = ttk.Entry(frame, textvariable=var, width=26, show="*" if secret else "")
+            entry.grid(row=row, column=1, sticky="ew", pady=5, padx=(0, 4))
 
         ttk.Checkbutton(frame, text="使用 SSL", variable=self.use_ssl_var).grid(row=6, column=1, sticky="w", pady=4)
-        ttk.Button(frame, text="保存账号", command=self.save_account, style="Accent.TButton").grid(row=7, column=1, sticky="ew", pady=(12, 0))
+        ttk.Button(frame, text="保存账号", command=self.save_account, style="Accent.TButton").grid(row=7, column=1, sticky="ew", pady=(12, 0), padx=(0, 4))
 
     def _build_actions_panel(self, parent: ttk.Frame) -> None:
         card = RoundedCard(parent, "快捷操作", height=305)
         card.grid(row=1, column=0, sticky="ew", pady=(16, 0))
         frame = card.inner
-        frame.columnconfigure(0, weight=1, minsize=280)
+        frame.columnconfigure(0, weight=1, minsize=300)
         self.fetch_button = ttk.Button(frame, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton")
         self.fetch_button.grid(row=0, column=0, sticky="ew", pady=5)
         self.compose_button = ttk.Button(frame, text="写邮件", command=self.open_compose_window)
@@ -165,7 +166,7 @@ class MailApp(tk.Tk):
         self.clear_cache_button = ttk.Button(frame, text="清空本地缓存", command=self.clear_local_cache)
         self.clear_cache_button.grid(row=4, column=0, sticky="ew", pady=5)
         self.status_var = tk.StringVar(value="请先保存账号配置。")
-        ttk.Label(frame, textvariable=self.status_var, wraplength=280).grid(row=5, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(frame, textvariable=self.status_var, wraplength=300).grid(row=5, column=0, sticky="ew", pady=(12, 0))
 
     def _build_inbox_panel(self, parent: ttk.Frame) -> None:
         card = RoundedCard(parent, "收件箱", height=330)
