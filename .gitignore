@@ -23,6 +23,10 @@ data/
 
 # Claude local settings
 .claude/
+CLAUDE.md
+
+# Course documents kept locally
+*.docx
 
 # IDE / OS
 .vscode/

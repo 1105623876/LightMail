@@ -53,8 +53,9 @@ class MailApp(tk.Tk):
         self.columnconfigure(1, weight=1)
         self.rowconfigure(0, weight=1)
 
-        left = ttk.Frame(self, padding=18)
+        left = ttk.Frame(self, padding=18, width=340)
         left.grid(row=0, column=0, sticky="ns")
+        left.grid_propagate(False)
         right = ttk.Frame(self, padding=(0, 18, 18, 18))
         right.grid(row=0, column=1, sticky="nsew")
         right.rowconfigure(0, weight=1)
@@ -97,11 +98,15 @@ class MailApp(tk.Tk):
     def _build_actions_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="操作", padding=14)
         frame.grid(row=1, column=0, sticky="ew", pady=(16, 0))
-        ttk.Button(frame, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton").grid(row=0, column=0, sticky="ew", pady=5)
-        ttk.Button(frame, text="写邮件", command=self.open_compose_window).grid(row=1, column=0, sticky="ew", pady=5)
-        ttk.Button(frame, text="删除选中邮件", command=self.delete_selected_message).grid(row=2, column=0, sticky="ew", pady=5)
+        frame.columnconfigure(0, weight=1, minsize=280)
+        self.fetch_button = ttk.Button(frame, text="收取最近邮件", command=self.fetch_messages, style="Accent.TButton")
+        self.fetch_button.grid(row=0, column=0, sticky="ew", pady=5)
+        self.compose_button = ttk.Button(frame, text="写邮件", command=self.open_compose_window)
+        self.compose_button.grid(row=1, column=0, sticky="ew", pady=5)
+        self.delete_button = ttk.Button(frame, text="删除选中邮件", command=self.delete_selected_message)
+        self.delete_button.grid(row=2, column=0, sticky="ew", pady=5)
         self.status_var = tk.StringVar(value="请先保存账号配置。")
-        ttk.Label(frame, textvariable=self.status_var, wraplength=260).grid(row=3, column=0, sticky="ew", pady=(12, 0))
+        ttk.Label(frame, textvariable=self.status_var, wraplength=280).grid(row=3, column=0, sticky="ew", pady=(12, 0))
 
     def _build_inbox_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="收件箱", padding=12)
@@ -309,6 +314,7 @@ class MailApp(tk.Tk):
 
     def _run_background(self, status: str, task) -> None:
         self.status_var.set(status)
+        self._set_actions_state("disabled")
 
         def worker() -> None:
             try:
@@ -317,8 +323,15 @@ class MailApp(tk.Tk):
                 self.after(0, lambda error=exc: self._show_error(error))
             else:
                 self.after(0, lambda text=result: self.status_var.set(text))
+            finally:
+                self.after(0, lambda: self._set_actions_state("normal"))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def _set_actions_state(self, state: str) -> None:
+        self.fetch_button.configure(state=state)
+        self.compose_button.configure(state=state)
+        self.delete_button.configure(state=state)
 
     def _show_error(self, exc: Exception) -> None:
         self.status_var.set("操作失败。")
