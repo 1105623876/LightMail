@@ -67,8 +67,9 @@ class MailApp(tk.Tk):
         header.bind("<Configure>", self._draw_header)
 
         left = ttk.Frame(self, padding=18)
-        left.grid(row=1, column=0, sticky="ns")
+        left.grid(row=1, column=0, sticky="nsew")
         left.columnconfigure(0, minsize=340)
+        left.rowconfigure(1, weight=1)
         right = ttk.Frame(self, padding=(0, 18, 18, 18))
         right.grid(row=1, column=1, sticky="nsew")
         right.rowconfigure(0, weight=1)
@@ -123,10 +124,11 @@ class MailApp(tk.Tk):
 
     def _build_actions_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="快捷操作", padding=12)
-        frame.grid(row=1, column=0, sticky="ew", pady=(16, 0))
+        frame.grid(row=1, column=0, sticky="nsew", pady=(16, 0))
+        frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
 
-        canvas = tk.Canvas(frame, height=190, highlightthickness=0, bd=0, bg="#eef3f8")
+        canvas = tk.Canvas(frame, highlightthickness=0, bd=0, bg="#eef3f8")
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar = ttk.Scrollbar(frame, orient="vertical", command=canvas.yview)
         scrollbar.grid(row=0, column=1, sticky="ns")
@@ -149,7 +151,6 @@ class MailApp(tk.Tk):
         self.clear_cache_button.grid(row=4, column=0, sticky="ew", pady=5)
         self.status_var = tk.StringVar(value="请先保存账号配置。")
         ttk.Label(content, textvariable=self.status_var, wraplength=292).grid(row=5, column=0, sticky="ew", pady=(12, 0))
-        ttk.Label(content, text="向下滚动查看更多操作状态", foreground="#64748b").grid(row=6, column=0, sticky="ew", pady=(8, 0))
 
     def _build_inbox_panel(self, parent: ttk.Frame) -> None:
         frame = ttk.LabelFrame(parent, text="收件箱", padding=12)
