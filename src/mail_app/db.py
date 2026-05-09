@@ -31,6 +31,7 @@ class MessageSummary:
     sent_at: str
     body: str
     raw_content: str
+    uidl: str
     is_deleted: bool
     cached_at: str
 
@@ -82,10 +83,18 @@ class MailStore:
                     sent_at TEXT NOT NULL,
                     body TEXT NOT NULL,
                     raw_content TEXT NOT NULL,
+                    uidl TEXT NOT NULL DEFAULT '',
                     is_deleted INTEGER NOT NULL DEFAULT 0,
-                    cached_at TEXT NOT NULL,
-                    UNIQUE(account_email, pop3_number, raw_content)
+                    cached_at TEXT NOT NULL
                 )
+                """
+            )
+            self._ensure_column(conn, "messages", "uidl", "TEXT NOT NULL DEFAULT ''")
+            conn.execute(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_account_uidl
+                ON messages(account_email, uidl)
+                WHERE uidl != ''
                 """
             )
             conn.execute(
@@ -99,6 +108,11 @@ class MailStore:
                 )
                 """
             )
+
+    def _ensure_column(self, conn: sqlite3.Connection, table: str, column: str, definition: str) -> None:
+        columns = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in columns:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def save_account(self, account: Account) -> None:
         with self.connect() as conn:
@@ -143,30 +157,73 @@ class MailStore:
         cached = 0
         with self.connect() as conn:
             for message in messages:
+                pop3_number = int(message["pop3_number"])
+                subject = str(message.get("subject", ""))
+                sender = str(message.get("sender", ""))
+                recipient = str(message.get("recipient", ""))
+                sent_at = str(message.get("sent_at", ""))
+                body = str(message.get("body", ""))
+                raw_content = str(message.get("raw_content", ""))
+                uidl = str(message.get("uidl", ""))
+                cached_at = datetime.now().isoformat(timespec="seconds")
+                existing = conn.execute(
+                    """
+                    SELECT id FROM messages
+                    WHERE account_email = ? AND (uidl = ? OR (uidl = '' AND raw_content = ?))
+                    ORDER BY id
+                    LIMIT 1
+                    """,
+                    (account_email, uidl, raw_content),
+                ).fetchone()
+                if existing:
+                    conn.execute(
+                        """
+                        DELETE FROM messages
+                        WHERE account_email = ? AND id != ? AND uidl = '' AND raw_content = ?
+                        """,
+                        (account_email, existing["id"], raw_content),
+                    )
+                    cursor = conn.execute(
+                        """
+                        UPDATE messages SET
+                            pop3_number = ?, subject = ?, sender = ?, recipient = ?,
+                            sent_at = ?, body = ?, raw_content = ?, uidl = ?,
+                            is_deleted = 0, cached_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            pop3_number,
+                            subject,
+                            sender,
+                            recipient,
+                            sent_at,
+                            body,
+                            raw_content,
+                            uidl,
+                            cached_at,
+                            existing["id"],
+                        ),
+                    )
+                    cached += cursor.rowcount
+                    continue
                 cursor = conn.execute(
                     """
                     INSERT INTO messages (
                         account_email, pop3_number, subject, sender, recipient,
-                        sent_at, body, raw_content, cached_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(account_email, pop3_number, raw_content) DO UPDATE SET
-                        subject = excluded.subject,
-                        sender = excluded.sender,
-                        recipient = excluded.recipient,
-                        sent_at = excluded.sent_at,
-                        body = excluded.body,
-                        cached_at = excluded.cached_at
+                        sent_at, body, raw_content, uidl, cached_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         account_email,
-                        int(message["pop3_number"]),
-                        str(message.get("subject", "")),
-                        str(message.get("sender", "")),
-                        str(message.get("recipient", "")),
-                        str(message.get("sent_at", "")),
-                        str(message.get("body", "")),
-                        str(message.get("raw_content", "")),
-                        datetime.now().isoformat(timespec="seconds"),
+                        pop3_number,
+                        subject,
+                        sender,
+                        recipient,
+                        sent_at,
+                        body,
+                        raw_content,
+                        uidl,
+                        cached_at,
                     ),
                 )
                 cached += cursor.rowcount
@@ -264,6 +321,7 @@ class MailStore:
             sent_at=row["sent_at"],
             body=row["body"],
             raw_content=row["raw_content"],
+            uidl=row["uidl"],
             is_deleted=bool(row["is_deleted"]),
             cached_at=row["cached_at"],
         )

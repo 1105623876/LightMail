@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import socket
 import ssl
 from dataclasses import dataclass, field
@@ -24,10 +25,12 @@ class POP3Client:
             self._expect_ok(sock)
             self._login(sock, username, auth_code)
             count, _ = self.stat(sock)
+            uidls = self.uidl(sock)
             start = max(1, count - limit + 1)
             for number in range(count, start - 1, -1):
                 raw_content = self.retrieve(sock, number)
-                messages.append({"pop3_number": number, "raw_content": raw_content})
+                uidl = uidls.get(number) or f"fallback:{hashlib.sha256(raw_content.encode('utf-8')).hexdigest()}"
+                messages.append({"pop3_number": number, "uidl": uidl, "raw_content": raw_content})
             self._send(sock, "QUIT")
             self._expect_ok(sock)
         return messages
@@ -48,6 +51,23 @@ class POP3Client:
         response = self._expect_ok(sock)
         parts = response.split()
         return int(parts[1]), int(parts[2])
+
+    def uidl(self, sock) -> dict[int, str]:
+        self._send(sock, "UIDL")
+        try:
+            self._expect_ok(sock)
+        except POP3Error:
+            return {}
+        uidls: dict[int, str] = {}
+        while True:
+            line = self._recv_line(sock)
+            if line == ".":
+                break
+            parts = line.split(maxsplit=1)
+            if len(parts) == 2 and parts[0].isdigit():
+                uidls[int(parts[0])] = parts[1]
+        self.log.append(f"< [uidl list, {len(uidls)} messages]")
+        return uidls
 
     def retrieve(self, sock, number: int) -> str:
         self._send(sock, f"RETR {number}")

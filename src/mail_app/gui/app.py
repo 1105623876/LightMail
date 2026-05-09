@@ -169,9 +169,11 @@ class MailApp(tk.Tk):
         self.tree.grid(row=0, column=0, sticky="nsew")
         self.tree.bind("<<TreeviewSelect>>", self.show_selected_message)
 
-        scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        scrollbar.grid(row=0, column=1, sticky="ns")
+        y_scrollbar = ttk.Scrollbar(frame, orient="vertical", command=self.tree.yview)
+        x_scrollbar = ttk.Scrollbar(frame, orient="horizontal", command=self.tree.xview)
+        self.tree.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
+        y_scrollbar.grid(row=0, column=1, sticky="ns")
+        x_scrollbar.grid(row=1, column=0, sticky="ew")
 
     def _build_tabs(self, parent: ttk.Frame) -> None:
         notebook = ttk.Notebook(parent)
@@ -300,6 +302,7 @@ class MailApp(tk.Tk):
         for raw in raw_messages:
             parsed = parse_message(str(raw["raw_content"]))
             parsed["pop3_number"] = int(raw["pop3_number"])
+            parsed["uidl"] = str(raw.get("uidl", ""))
             parsed_messages.append(parsed)
         cached = self.store.cache_messages(account.email, parsed_messages)
         self.store.add_protocol_log(account.email, "POP3 收取邮件", client.log)
