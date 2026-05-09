@@ -35,6 +35,15 @@ class MessageSummary:
     cached_at: str
 
 
+@dataclass
+class ProtocolLog:
+    id: int
+    account_email: str
+    action: str
+    content: str
+    created_at: str
+
+
 class MailStore:
     def __init__(self, db_path: Path = DB_PATH) -> None:
         self.db_path = db_path
@@ -76,6 +85,17 @@ class MailStore:
                     is_deleted INTEGER NOT NULL DEFAULT 0,
                     cached_at TEXT NOT NULL,
                     UNIQUE(account_email, pop3_number, raw_content)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS protocol_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_email TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 )
                 """
             )
@@ -169,9 +189,58 @@ class MailStore:
             row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
         return self._row_to_message(row) if row else None
 
+    def update_message_parse(self, message_id: int, parsed: dict[str, str]) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                UPDATE messages SET
+                    subject = ?, sender = ?, recipient = ?, sent_at = ?, body = ?
+                WHERE id = ?
+                """,
+                (
+                    parsed.get("subject", ""),
+                    parsed.get("sender", ""),
+                    parsed.get("recipient", ""),
+                    parsed.get("sent_at", ""),
+                    parsed.get("body", ""),
+                    message_id,
+                ),
+            )
+
+    def clear_messages(self, account_email: str) -> int:
+        with self.connect() as conn:
+            cursor = conn.execute("DELETE FROM messages WHERE account_email = ?", (account_email,))
+            return cursor.rowcount
+
     def mark_deleted(self, message_id: int) -> None:
         with self.connect() as conn:
             conn.execute("UPDATE messages SET is_deleted = 1 WHERE id = ?", (message_id,))
+
+    def add_protocol_log(self, account_email: str, action: str, lines: Iterable[str]) -> None:
+        content = "\n".join(lines)
+        if not content:
+            return
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO protocol_logs (account_email, action, content, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (account_email, action, content, datetime.now().isoformat(timespec="seconds")),
+            )
+
+    def list_protocol_logs(self, account_email: str, limit: int = 20) -> list[ProtocolLog]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM protocol_logs
+                WHERE account_email = ?
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (account_email, limit),
+            ).fetchall()
+        return [self._row_to_protocol_log(row) for row in rows]
 
     def _row_to_account(self, row: sqlite3.Row) -> Account:
         return Account(
@@ -197,4 +266,13 @@ class MailStore:
             raw_content=row["raw_content"],
             is_deleted=bool(row["is_deleted"]),
             cached_at=row["cached_at"],
+        )
+
+    def _row_to_protocol_log(self, row: sqlite3.Row) -> ProtocolLog:
+        return ProtocolLog(
+            id=row["id"],
+            account_email=row["account_email"],
+            action=row["action"],
+            content=row["content"],
+            created_at=row["created_at"],
         )
