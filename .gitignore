@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environment
+.venv/
+venv/
+
+# Local runtime data
+data/
+*.db
+*.sqlite
+*.sqlite3
+
+# Local secrets and env files
+.env
+.env.*
+!.env.example
+
+# Claude local settings
+.claude/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Office temporary files
+~$*.docx
+~$*.xlsx
+~$*.pptx

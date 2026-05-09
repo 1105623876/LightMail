@@ -1,0 +1,200 @@
+from __future__ import annotations
+
+import sqlite3
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import Iterable
+
+from .config import DB_PATH
+
+
+@dataclass
+class Account:
+    email: str
+    auth_code: str
+    smtp_host: str
+    smtp_port: int
+    pop3_host: str
+    pop3_port: int
+    use_ssl: bool = True
+
+
+@dataclass
+class MessageSummary:
+    id: int
+    account_email: str
+    pop3_number: int
+    subject: str
+    sender: str
+    recipient: str
+    sent_at: str
+    body: str
+    raw_content: str
+    is_deleted: bool
+    cached_at: str
+
+
+class MailStore:
+    def __init__(self, db_path: Path = DB_PATH) -> None:
+        self.db_path = db_path
+
+    def connect(self) -> sqlite3.Connection:
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def initialize(self) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS accounts (
+                    email TEXT PRIMARY KEY,
+                    auth_code TEXT NOT NULL,
+                    smtp_host TEXT NOT NULL,
+                    smtp_port INTEGER NOT NULL,
+                    pop3_host TEXT NOT NULL,
+                    pop3_port INTEGER NOT NULL,
+                    use_ssl INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS messages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    account_email TEXT NOT NULL,
+                    pop3_number INTEGER NOT NULL,
+                    subject TEXT NOT NULL,
+                    sender TEXT NOT NULL,
+                    recipient TEXT NOT NULL,
+                    sent_at TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    raw_content TEXT NOT NULL,
+                    is_deleted INTEGER NOT NULL DEFAULT 0,
+                    cached_at TEXT NOT NULL,
+                    UNIQUE(account_email, pop3_number, raw_content)
+                )
+                """
+            )
+
+    def save_account(self, account: Account) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO accounts (
+                    email, auth_code, smtp_host, smtp_port, pop3_host,
+                    pop3_port, use_ssl, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(email) DO UPDATE SET
+                    auth_code = excluded.auth_code,
+                    smtp_host = excluded.smtp_host,
+                    smtp_port = excluded.smtp_port,
+                    pop3_host = excluded.pop3_host,
+                    pop3_port = excluded.pop3_port,
+                    use_ssl = excluded.use_ssl,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    account.email,
+                    account.auth_code,
+                    account.smtp_host,
+                    account.smtp_port,
+                    account.pop3_host,
+                    account.pop3_port,
+                    int(account.use_ssl),
+                    datetime.now().isoformat(timespec="seconds"),
+                ),
+            )
+
+    def get_account(self, email: str) -> Account | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM accounts WHERE email = ?", (email,)).fetchone()
+        return self._row_to_account(row) if row else None
+
+    def get_last_account(self) -> Account | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM accounts ORDER BY updated_at DESC LIMIT 1").fetchone()
+        return self._row_to_account(row) if row else None
+
+    def cache_messages(self, account_email: str, messages: Iterable[dict[str, str | int]]) -> int:
+        cached = 0
+        with self.connect() as conn:
+            for message in messages:
+                cursor = conn.execute(
+                    """
+                    INSERT INTO messages (
+                        account_email, pop3_number, subject, sender, recipient,
+                        sent_at, body, raw_content, cached_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(account_email, pop3_number, raw_content) DO UPDATE SET
+                        subject = excluded.subject,
+                        sender = excluded.sender,
+                        recipient = excluded.recipient,
+                        sent_at = excluded.sent_at,
+                        body = excluded.body,
+                        cached_at = excluded.cached_at
+                    """,
+                    (
+                        account_email,
+                        int(message["pop3_number"]),
+                        str(message.get("subject", "")),
+                        str(message.get("sender", "")),
+                        str(message.get("recipient", "")),
+                        str(message.get("sent_at", "")),
+                        str(message.get("body", "")),
+                        str(message.get("raw_content", "")),
+                        datetime.now().isoformat(timespec="seconds"),
+                    ),
+                )
+                cached += cursor.rowcount
+        return cached
+
+    def list_messages(self, account_email: str) -> list[MessageSummary]:
+        with self.connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM messages
+                WHERE account_email = ? AND is_deleted = 0
+                ORDER BY pop3_number DESC, id DESC
+                """,
+                (account_email,),
+            ).fetchall()
+        return [self._row_to_message(row) for row in rows]
+
+    def get_message(self, message_id: int) -> MessageSummary | None:
+        with self.connect() as conn:
+            row = conn.execute("SELECT * FROM messages WHERE id = ?", (message_id,)).fetchone()
+        return self._row_to_message(row) if row else None
+
+    def mark_deleted(self, message_id: int) -> None:
+        with self.connect() as conn:
+            conn.execute("UPDATE messages SET is_deleted = 1 WHERE id = ?", (message_id,))
+
+    def _row_to_account(self, row: sqlite3.Row) -> Account:
+        return Account(
+            email=row["email"],
+            auth_code=row["auth_code"],
+            smtp_host=row["smtp_host"],
+            smtp_port=row["smtp_port"],
+            pop3_host=row["pop3_host"],
+            pop3_port=row["pop3_port"],
+            use_ssl=bool(row["use_ssl"]),
+        )
+
+    def _row_to_message(self, row: sqlite3.Row) -> MessageSummary:
+        return MessageSummary(
+            id=row["id"],
+            account_email=row["account_email"],
+            pop3_number=row["pop3_number"],
+            subject=row["subject"],
+            sender=row["sender"],
+            recipient=row["recipient"],
+            sent_at=row["sent_at"],
+            body=row["body"],
+            raw_content=row["raw_content"],
+            is_deleted=bool(row["is_deleted"]),
+            cached_at=row["cached_at"],
+        )
