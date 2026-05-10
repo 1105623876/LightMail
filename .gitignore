@@ -24,6 +24,10 @@ data/
 # Claude local settings
 .claude/
 CLAUDE.md
+.superpowers/
+
+# Local planning documents
+docs/
 
 # Course documents kept locally
 *.docx
